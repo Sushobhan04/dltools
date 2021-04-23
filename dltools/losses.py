@@ -1,10 +1,9 @@
-import logging
 import torch
 import torch.nn as nn
 import torchvision
 from pytorch_msssim import SSIM, MS_SSIM, ssim, ms_ssim
 import torch.nn.functional as F
-from kornia import spatial_gradient
+from torch.nn import MSELoss, L1Loss
 from . import utils
 
 class WeightedLoss(nn.Module):
@@ -36,10 +35,10 @@ class PerceptualLoss(torch.nn.Module):
     """
     @classmethod
     def from_cfg(cls, cfg):
-        base_loss_fn = getattr(nn, cfg.base_loss_name)()
-        return cls(cfg.loss_model_name, base_loss_fn, device=cfg.device, resize=cfg.loss_resize)
+        base_loss_fn = getattr(nn, cfg.base_loss_class)()
+        return cls(cfg.base_loss_network, base_loss_fn, device=cfg.device, resize=cfg.loss_resize)
 
-    def __init__(self, model_name, loss_fn, device="cpu", resize=False):
+    def __init__(self, base_loss_network, loss_fn, device="cpu", resize=False):
         """Initialize the loss function
 
         Args:
@@ -55,8 +54,8 @@ class PerceptualLoss(torch.nn.Module):
             "vgg19_bn": [4, 11, 18, 31, 43]
         }
 
-        layer_idx_range = layer_idx_ranges[model_name]
-        features = getattr(torchvision.models, model_name)(pretrained=True).features
+        layer_idx_range = layer_idx_ranges[base_loss_network]
+        features = getattr(torchvision.models, base_loss_network)(pretrained=True).features
 
         blocks = []
         for i in range(len(layer_idx_range)):
@@ -138,15 +137,18 @@ class NSSIM(nn.Module):
         return 1 - self.ssim(x, y)
 
 
-class SpatialGradientLoss(torch.nn.Module):
-    def __init__(self, loss_fn):
+class TVLoss(torch.nn.Module):
+    def __init__(self):
         super().__init__()
-        self.loss_fn = loss_fn
 
-    def forward(self, x, y):
-        G_x = spatial_gradient(x)  # (B, C, 2, H, W)
-        G_y = spatial_gradient(y)  # (B, C, 2, H, W)
+    def forward(self, x, channel_last=True):
+        if channel_last:
+            tv_h = torch.abs(x[..., 1:, :, :] - x[..., :-1, :, :]).mean()
+            tv_w = torch.abs(x[..., :, 1:, :] - x[..., :, :-1, :]).mean()
+        else:
+            tv_h = torch.abs(x[..., 1:, :] - x[..., :-1, :]).mean()
+            tv_w = torch.abs(x[..., :, 1:] - x[..., :, :-1]).mean()
 
-        loss = self.loss_fn(G_x, G_y)
+        loss = tv_h + tv_w
 
         return loss

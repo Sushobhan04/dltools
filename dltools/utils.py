@@ -2,21 +2,10 @@ import importlib
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import kornia
 from PIL import Image
-
-
-class Config(object):
-    def __init__(self):
-        pass
-
-
-def name_to_class(class_name, module_name):
-    # load the module, will raise ImportError if module cannot be loaded
-    m = importlib.import_module(module_name)
-    # get the class, will raise AttributeError if class cannot be found
-    c = getattr(m, class_name)
-    return c
+import cv2
+from argparse import Namespace
+import torch.functional as F
 
 
 def z(i, fill=4):
@@ -27,10 +16,27 @@ def z(i, fill=4):
 
     return i
 
+def torch_to_numpy(tensor, channel_last=False):
+    if channel_last:
+        return tensor.cpu().numpy()
+    else:
+        if tensor.ndim == 3:
+            return tensor.cpu().permute(0, 2, 1).numpy()
+        elif tensor.ndim == 4:
+            return tensor.cpu().permute(0, 2, 3, 1).numpy()
 
-def regular_meshgrid(shape, device="cpu"):
-    grid = torch.meshgrid(*[torch.arange(i) for i in shape])
-    grid = torch.stack(grid, dim=-1).to(device)
+def regular_meshgrid(shape, normalize=False, device="cpu"):
+    grid = torch.meshgrid(*[torch.arange(i, device=device) for i in shape])
+    grid = torch.stack(grid, dim=-1)
+
+    if normalize:
+        grid = grid / (torch.tensor(shape, device=device) - 1.0)
+
+    return grid
+
+def linspace_meshgrid(shape, device="cpu"):
+    grid = torch.meshgrid(*[torch.linspace(-1.0, 1.0, i, device=device) for i in shape])
+    grid = torch.stack(grid, dim=-1)
     return grid
 
 
@@ -114,52 +120,16 @@ def hist_match(source, template, channel_dim=0, to_int=True):
 
     return equalized_img
 
-
-def imshow(img, figsize=10, pytorch=True, colorbar=False, grid=True, cmap=None):
-    if pytorch:
-        img = img.detach().cpu().permute(1, 2, 0).numpy()
-    plt.figure(figsize=(figsize, figsize))
-    plt.imshow(img, cmap=cmap)
-    if colorbar:
-        plt.colorbar()
-    if grid:
-        plt.grid()
-
-
-def plot(x, y, params):
-    plt.figure(figsize=params["figsize"])
-    plt.plot(x, y, params["marker"], linestyle=params["linestyle"])
-    plt.grid(params["grid"])
-    plt.title(params["title"])
-    plt.xlabel(params["xlabel"])
-    plt.ylabel(params["ylabel"])
-    plt.xlim(*params["xlim"])
-    plt.ylim(*params["ylim"])
-
-    if params["save_file"] is not None:
-        plt.savefig(params["save_file"], dpi=params["dpi"])
-
-
-def merge_dims(tensor, dim):
-    out_shape = list(tensor.shape)
-    out_shape = out_shape[: dim[0]] + [np.prod(tensor.shape[dim[0]:dim[1] + 1])] + out_shape[dim[1] + 1:]
-    return tensor.reshape(out_shape)
-
-def unmerge_dims(tensor, dim, shape):
-    out_shape = list(tensor.shape)
-    out_shape = out_shape[: dim] + list(shape) + out_shape[dim + 1:]
-    return tensor.reshape(out_shape)
-
 def matmul(a, b):
     shape_a = a.shape
     shape_b = b.shape
 
     if a.ndim < b.ndim:
         for _ in range(b.ndim - a.ndim):
-            a = a.unsqueeze(0)
+            a.unsqueeze_(0)
     else:
         for _ in range(a.ndim - b.ndim):
-            b = b.unsqueeze(0)
+            b.unsqueeze_(0)
 
     expanded_shape = [max([a.shape[i], b.shape[i]]) for i in range(a.ndim - 2)] + [-1, -1]
 
@@ -175,18 +145,6 @@ def chain_mm(matrics):
         out = matmul(out, matrics[i])
     return out
 
-
-def tensor_to_image(tensor, to_uint8=True):
-    image = kornia.tensor_to_image(tensor)
-    if to_uint8:
-        image = (image * 255.0).astype(np.uint8)
-
-    if image.ndim == 4:
-        image = image[0]
-
-    image = Image.fromarray(image)
-    return image
-
 def move_to_device(data, device):
     if torch.is_tensor(data):
         data = data.to(device)
@@ -195,3 +153,53 @@ def move_to_device(data, device):
             if torch.is_tensor(data[key]) and data[key].device != device:
                 data[key] = data[key].to(device)
     return data
+
+def one_hot(tensor, size):
+    v = torch.zeros((*tensor.shape, size), device=tensor.device)
+    range_idx = torch.arange(tensor.shape[0], device=tensor.device)
+    v[range_idx, tensor] = 1.0
+
+    return v
+
+def translate_image(self, image, translation):
+    B, C, H, W = image.shape
+
+    grid = linspace_meshgrid([H, W], device=image.device)  # (B, H, W, 2)
+    grid = grid - translation[:, None, None]  # (B, H, W, 2)
+
+    new_image = F.grid_sample(image, grid, align_corners=True)  # (B, C, H, W)
+    return new_image
+
+def circular_translation(r, V):
+    theta = torch.arange(V) * 2 * np.pi / V   # (V)
+    r_vector = torch.stack([torch.cos(theta), torch.sin(theta)], dim=1) * r  # (V, 2)
+    return r_vector
+
+def video_from_frames(filename, frames, fps, codec, verbose=False):
+    B, C, H, W = frames.shape
+    fourcc = cv2.VideoWriter_fourcc(*codec)
+    video = cv2.VideoWriter(filename, fourcc, fps, (W, H))
+
+    frames = torch_to_numpy(frames)[..., ::-1]
+
+    for i, frame in enumerate(frames):
+        if verbose:
+            print(f"frame {i}")
+
+        video.write(frame)
+
+    video.release()
+
+    if verbose:
+        print(f"file saved to {filename}")
+
+def video_from_PIL(filename, frames, fps, codec):
+    W, H = frames[0].size
+    fourcc = cv2.VideoWriter_fourcc(*codec)
+    video = cv2.VideoWriter(filename, fourcc, fps, (W, H))
+
+    for frame in frames:
+        f = np.asarray(frame)[..., ::-1]
+        video.write(f)
+
+    video.release()

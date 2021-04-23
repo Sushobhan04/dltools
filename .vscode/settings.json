@@ -24,6 +24,6 @@
         "data/deepfocus_dataset/**": true,
         "data/spaces_dataset/**": true
     },
-    "python.dataScience.jupyterServerURI": "http://localhost:8890/?token=3248ee489ec2d1e26cccff62d6f14b3a9e22430e02da3386",
-    "python.terminal.activateEnvironment": false
+    "python.terminal.activateEnvironment": false,
+    "jupyter.jupyterServerType": "remote"
 }
