@@ -1,6 +1,8 @@
 import torch
+from torch import tensor
 import torch.nn as nn
 import copy
+from einops import rearrange, repeat
 
 
 EPS = 1e-8
@@ -9,9 +11,7 @@ def homo_to_euclid(points):
     return points[..., :-1] / (points[..., -1:] + EPS)
 
 def euclid_to_homo(points):
-    points_shape = list(points.shape)
-    points_shape[-1] = 1
-    return torch.cat([points, torch.ones(points_shape, device=points.device)], dim=-1)
+    return torch.cat([points, torch.ones_like(points[..., :1])], dim=-1)
 
 
 class PerspectiveCamera(nn.Module):
@@ -20,16 +20,17 @@ class PerspectiveCamera(nn.Module):
         return cls(tensors[..., 0], tensors[..., 1])
 
     @classmethod
-    def collate(cls, cameras):
-        intrinsics = torch.cat([camera.intrinsics for camera in cameras], dim=0)
-        extrinsics = torch.cat([camera.extrinsics for camera in cameras], dim=0)
+    def stack(cls, cameras, dim=0):
+        intrinsics = torch.stack([camera.intrinsics for camera in cameras], dim=dim)
+        extrinsics = torch.stack([camera.extrinsics for camera in cameras], dim=dim)
 
         return cls(intrinsics, extrinsics)
 
-    def __init__(self, intrinsics, extrinsics=None):
+    def __init__(self, intrinsics, extrinsics=None, device="cpu"):
         super().__init__()
-        self.register_buffer("intrinsics", intrinsics)  # (*, 4, 4)
-        self.register_buffer("extrinsics", extrinsics if extrinsics is not None else torch.eye(4).expand_as(intrinsics))  # (*, 4, 4)
+        self.register_buffer("intrinsics", intrinsics.to(device))  # (*, 4, 4)
+        self.register_buffer("extrinsics", extrinsics.to(device) if extrinsics is not None else torch.eye(4, device=device).expand_as(intrinsics))  # (*, 4, 4)
+        self.device = device
         self.derived_matrices()
 
     def derived_matrices(self):
@@ -49,19 +50,24 @@ class PerspectiveCamera(nn.Module):
     def tensors(self):
         return torch.stack([self.intrinsics, self.extrinsics], dim=-1)
 
+    def to(self, device):
+        self.intrinsics = self.intrinsics.to(device)
+        self.extrinsics = self.extrinsics.to(device)
+        self.device = device
+        self.derived_matrices()
+
+        return self
+
     def relative_extrinsics(self, camera):
-        return torch.matmul(camera.extrinsics, torch.inverse(self.extrinsics))
+        return torch.matmul(camera.extrinsics, self.extrinsics.inverse())
 
-    def expand_dim(self, dim):
-        if isinstance(dim, int):
-            tensors = self.tensors().unsqueeze(dim)
-        elif isinstance(dim, list):
-            tensors = self.tensors()
-            for d in dim:
-                tensors = tensors.unsqueeze(d)
-        else:
-            raise f"dim must be either int or list. Founf {type(dim)}"
+    def expand_as(self, pattern, **kwargs):
+        tensors = self.tensors()
+        tensors = repeat(tensors, pattern, **kwargs)
+        return PerspectiveCamera.from_tensors(tensors)
 
+    def unsqueeze(self, dim):
+        tensors = self.tensors().unsqueeze(dim)
         return PerspectiveCamera.from_tensors(tensors)
 
     def translate(self, t):
@@ -69,15 +75,15 @@ class PerspectiveCamera(nn.Module):
         dest_extrinsics[..., :2, 3] = dest_extrinsics[..., :2, 3] + t
         return PerspectiveCamera(self.intrinsics.clone(), dest_extrinsics)
 
-    def xy_distance(self, camera, xy=True):
+    def relative_distance(self, camera, xy=True):
         if xy:
-            out = torch.sqrt(torch.sum(self.xyz_distance(camera)[..., :2]**2, dim=-1))
+            out = torch.sqrt(torch.sum(self.relative_distance_vector(camera)[..., :2]**2, dim=-1))
         else:
-            out = torch.sqrt(torch.sum(self.xyz_distance(camera)**2, dim=-1))
+            out = torch.sqrt(torch.sum(self.relative_distance_vector(camera)**2, dim=-1))
 
         return out
 
-    def xyz_distance(self, camera):
+    def relative_distance_vector(self, camera):
         rel_ext = self.relative_extrinsics(camera)
         T = rel_ext[..., :3, 3]  # (..., 3)
 

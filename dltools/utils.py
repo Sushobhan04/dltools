@@ -1,3 +1,4 @@
+
 import importlib
 import torch
 import numpy as np
@@ -6,6 +7,7 @@ from PIL import Image
 import cv2
 from argparse import Namespace
 import torch.functional as F
+from .camera import euclid_to_homo, homo_to_euclid
 
 
 def z(i, fill=4):
@@ -203,3 +205,18 @@ def video_from_PIL(filename, frames, fps, codec):
         video.write(f)
 
     video.release()
+
+def transform_points(transform, points, homo=False):
+    if not homo:
+        points = euclid_to_homo(points)[..., None]
+
+    points = matmul(transform, points)
+
+    if not homo:
+        points = homo_to_euclid(points[..., 0])
+
+    return points
+
+
+def crop_by_size(img, start, size):
+    return img[..., start[0]: start[0] + size[0], start[1]: start[1] + size[1]]

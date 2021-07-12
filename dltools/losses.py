@@ -3,32 +3,35 @@ import torch.nn as nn
 import torchvision
 from pytorch_msssim import SSIM, MS_SSIM, ssim, ms_ssim
 import torch.nn.functional as F
-from torch.nn import MSELoss, L1Loss
+from torch.nn import MSELoss as nn_MSELoss
+from torch.nn import L1Loss as nn_L1Loss
 from . import utils
+import lpips
 
-class WeightedLoss(nn.Module):
+
+class BaseLoss(torch.nn.Module):
+    """Perceptual Loss function based on any torchvision model
+    """
     @classmethod
     def from_cfg(cls, cfg):
-        loss_fns = []
-        for loss_fn_class in cfg.loss_fn_classes:
-            loss_fns.append(utils.name_to_class(loss_fn_class, cfg.loss_class_module).from_cfg(cfg))
-        return cls(loss_fns, cfg.loss_weights)
+        return cls()
 
-    def __init__(self, loss_fns, weights):
+    def __init__(self):
         super().__init__()
 
-        assert len(loss_fns) == len(weights)
-
-        self.loss_fns = loss_fns
-        self.weights = weights
-
     def forward(self, x, y):
-        loss = 0
-        for i, loss_fn in enumerate(self.loss_fns):
-            loss += self.weights[i] * loss_fn(x, y)
-
+        loss = self.loss_fn(x, y)
         return loss
 
+class MSELoss(BaseLoss):
+    def __init__(self):
+        super().__init__()
+        self.loss_fn = nn_MSELoss()
+
+class L1Loss(BaseLoss):
+    def __init__(self):
+        super().__init__()
+        self.loss_fn = nn_L1Loss()
 
 class PerceptualLoss(torch.nn.Module):
     """Perceptual Loss function based on any torchvision model
@@ -98,6 +101,25 @@ class PerceptualLoss(torch.nn.Module):
         loss = 0.0
         for i in range(len(x_out)):
             loss = loss + self.loss_fn(x_out[i], y_out[i])
+        return loss
+
+
+class LPIPS(torch.nn.Module):
+    """Perceptual Loss function based on any torchvision model
+    """
+    @classmethod
+    def from_cfg(cls, cfg):
+        return cls(cfg.base_loss_network, device=cfg.device, calibrate=cfg.calibrate)
+
+    def __init__(self, net, device="cpu", calibrate=True, verbose=False):
+        super().__init__()
+        self.loss_fn = lpips.LPIPS(net=net, lpips=calibrate, verbose=verbose).to(device)
+        self.net = net
+        self.device = device
+        self.calibrate = calibrate
+
+    def forward(self, x, y):
+        loss = self.loss_fn(x, y)
         return loss
 
 

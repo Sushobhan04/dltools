@@ -75,18 +75,19 @@ def ssim(x, y, to_uint8=True, is_torch=True, gaussian_weights=True, win_size=Non
     return metric_mean
 
 
-def lpips(x, y, net="vgg", normalize=True, loss_fn=None, device="cpu"):
+def lpips(x, y, net="vgg", normalize=True, device="cpu", to_numpy=False):
     assert x.shape[0] == y.shape[0]
     if normalize:
         x = (x - 0.5) * 2.0
         y = (y - 0.5) * 2.0
 
-    if loss_fn is None:
-        loss_fn = lpips_lib.LPIPS(net=net).to(device)
-    metric = loss_fn(x, y).detach().cpu().numpy()
-    metric_mean = np.mean(metric)
+    metric_function = lpips_lib.LPIPS(net=net).to(device)
+    metric = metric_function(x, y)
 
-    return metric_mean
+    if to_numpy:
+        metric = metric.detach().cpu().numpy()
+
+    return metric
 
 def class_accuracy(x, y, one_hot=True):
     if one_hot:
