@@ -1,29 +1,5 @@
 {
-    "python.linting.pylintEnabled": true,
-    "python.linting.flake8Enabled": true,
-    "python.linting.enabled": true,
-    "python.linting.flake8Args": [
-        "--max-line-length=180",
-        "--ignore=E402,F841,F401,E302,E305",
-    ],
-    "python.linting.pylintArgs": [
-        "--generated-members"
-    ],
-    "python.envFile": "${workspaceFolder}/.env",
-    "python.autoComplete.extraPaths": [
-        "/home/sushobhan/git",
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.promptToConfigure": false,
-    "python.testing.pytestEnabled": false,
-    "python.testing.nosetestsEnabled": false,
-    "files.watcherExclude": {
-        "**/.git/objects/**": true,
-        "**/.git/subtree-cache/**": true,
-        "**/node_modules/*/**": true,
-        "data/deepfocus_dataset/**": true,
-        "data/spaces_dataset/**": true
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
-    "python.terminal.activateEnvironment": false,
-    "jupyter.jupyterServerType": "remote"
 }
