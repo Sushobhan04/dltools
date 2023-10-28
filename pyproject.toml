@@ -1,7 +1,7 @@
 [project]
 name = "dltools"
 version = "0.0.0"
-description = "Make transformers see"
+description = "DL tools"
 readme = "README.md"
 requires-python = ">=3.7"
 
@@ -28,6 +28,8 @@ dependencies = [ # Optional
     "tiktoken",
     "transformers",
     "datasets",
+    "decord",
+    "moviepy",
 ]
 
 # The following would provide a command line executable called `sample`
