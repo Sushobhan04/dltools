@@ -6,7 +6,6 @@
             "extensions": [
                 "ms-python.python",
                 "ms-python.vscode-pylance",
-                "njpwerner.autodocstring",
                 "ms-toolsai.jupyter",
                 "ms-toolsai.jupyter-renderers",
                 "ms-toolsai.jupyter-keymap",
@@ -23,8 +22,8 @@
                 "redhat.vscode-yaml",
                 "ZainChen.json",
                 "ms-python.isort",
-                "VisualStudioExptTeam.vscodeintellicode",
-                "VisualStudioExptTeam.intellicode-api-usage-examples"
+                "tamasfe.even-better-toml",
+                "donjayamanne.python-environment-manager"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/opt/conda/bin/python",

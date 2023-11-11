@@ -20,7 +20,9 @@ authors = [{ name = "Sushobhan Ghosh", email = "sushobhan04ghosh@gmail.com" }]
 # This should be your name or the names of the organization who currently
 # maintains the project, and a valid email address corresponding to the name
 # listed.
-maintainers = [{ name = "Sushobhan Ghosh", email = "sushobhan04ghosh@gmail.com" }]
+maintainers = [
+    { name = "Sushobhan Ghosh", email = "sushobhan04ghosh@gmail.com" },
+]
 
 dependencies = [ # Optional
     "torch>=2.0.0",
@@ -47,5 +49,5 @@ build-backend = "setuptools.build_meta"
 packages = ["dltools"]
 
 [tool.ruff]
-line-length = 450
+line-length = 80
 select = ["E", "F"]
